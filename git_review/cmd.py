@@ -31,6 +31,9 @@ import textwrap
 import pkg_resources
 import requests
 
+import gitapi
+
+
 if sys.version < '3':
     import ConfigParser
     import urllib
@@ -1264,6 +1267,10 @@ def convert_bool(one_or_zero):
     "Return a bool on a one or zero string."
     return str(one_or_zero) in ["1", "true", "True"]
 
+def read_branch_from_SHA1(sha1):
+    repo = gitapi.Repo('.')
+    data = repo.git_command('branch','--contains',sha1).strip()
+    return [ line.strip() for line in data.split("\n") if not line.startswith('*')]
 
 class MalformedInput(GitReviewException):
     EXIT_CODE = 3
@@ -1301,6 +1308,9 @@ def _main():
 
     parser.add_argument("--reviewers", nargs="+",
                         help="Add reviewers to uploaded patch sets.")
+
+    parser.add_argument("--SHA1",
+                        help="SHA1")
     parser.add_argument("-D", "--draft", dest="draft", action="store_true",
                         help="Submit review as a draft")
     parser.add_argument("-c", "--compatible", dest="compatible",
@@ -1339,6 +1349,7 @@ def _main():
     fetch = parser.add_mutually_exclusive_group()
     fetch.set_defaults(download=False, compare=False, cherrypickcommit=False,
                        cherrypickindicate=False, cherrypickonly=False)
+
     fetch.add_argument("-d", "--download", dest="changeidentifier",
                        action=DownloadFlag, metavar="CHANGE",
                        const="download",
@@ -1390,6 +1401,7 @@ def _main():
     parser.add_argument("--no-custom-script", dest="custom_script",
                         action="store_false", default=True,
                         help="Do not run custom scripts.")
+
     parser.add_argument("--color", dest="color", metavar="<when>",
                         nargs="?", choices=["always", "never", "auto"],
                         help="Show color output. --color (without [<when>]) "
@@ -1436,7 +1448,15 @@ def _main():
         sys.exit(0)
 
     if options.branch is None:
-        branch = config['branch']
+        if options.SHA1 is None:
+            branch = config['branch']
+        else:
+            branch = read_branch_from_SHA1(options.SHA1)
+            if len(branch)!=1:
+                print('Several branch contains commit '+options.SHA1)
+                sys.exit(-1)
+            else:
+                branch = branch[0]
     else:
         # explicitly-specified branch on command line overrides options.track
         branch = options.branch
